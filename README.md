@@ -5,6 +5,7 @@
 这是一个基于 Cloudflare Workers 搭建的自适应挪车页面。
 
 可实现微信消息推送和一键拨打电话
+
 微信消息推送使用<a href="https://github.com/qmzz/cf_wxpush" target="_blank">wxpush</a>自行搭建
 
 需要配置的环境变量：
