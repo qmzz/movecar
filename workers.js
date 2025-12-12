@@ -7,46 +7,52 @@ async function handleRequest(request) {
 
   // --- 1. 获取环境变量 ---
   // 请确保后台 Variables 已配置: PHONE_NUMBER, API_TOKEN, CAR_PLATE, PUSH_API_URL
-  const apiUrl = PUSH_API_URL;
-  const token = API_TOKEN;
-  const phone = PHONE_NUMBER;
+  const phone = PHONE_NUMBER; 
+  const token = API_TOKEN;    
   const plate = CAR_PLATE;
-  
+  const apiUrl = PUSH_API_URL; 
   
   const pushTitle = '挪车通知';
   const pushContent = '您好，有人需要您挪车，请及时处理';
 
-  // --- 2. 后端逻辑 ---
+  // --- 2. 后端逻辑 (增强版 POST) ---
   if (url.searchParams.get('action') === 'notify') {
     
-	// 构造 POST 请求参数
+    // 构造 POST 请求
     const postOptions = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': token // 按照您的 curl 示例，将 token 放在 Header 中
+        'Authorization': token 
       },
       body: JSON.stringify({
         title: pushTitle,
-        content: pushContent
+        content: pushContent,
+        // Token同时放在 Body 中 (作为双重保险，防止 Header 读取失败)
+        token: token 
       })
     };
     
     try {
-      // 发起 POST 请求
-	  const resp = await fetch(targetUrl);
+      const resp = await fetch(apiUrl, postOptions);
+      // 读取服务端返回的具体文字（无论是成功还是报错）
+      const respText = await resp.text();
       
-	  if (resp.status === 200) {
+      if (resp.status === 200) {
+        // 成功时返回 200
         return new Response('OK', { status: 200 });
       } else {
-        return new Response('Fail', { status: 500 });
+        // 失败时，将服务端的报错信息（respText）返回给前端
+        // 这样前端弹窗就能显示出具体是 "Invalid token" 还是其他错误
+        console.log("Upstream Error:", respText); // 在 Worker 日志中也能看到
+        return new Response(respText, { status: 500 });
       }
     } catch (e) {
-      return new Response('Error', { status: 500 });
+      return new Response('Worker Network Error: ' + e.message, { status: 500 });
     }
   }
 
-  // --- 3. 前端界面 ---
+  // --- 3. 前端界面 (增加了错误显示) ---
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="zh-CN">
@@ -62,19 +68,18 @@ async function handleRequest(request) {
           /* 车牌样式：新能源绿渐变 */
           .plate-box {
             display: inline-block;
-            /* 从上到下的渐变：白色 -> 亮绿色 */
             background: linear-gradient(180deg, #ffffff 10%, #52c41a 100%);
-            color: #111; /* 新能源车牌字通常是黑色 */
+            color: #111;
             font-weight: bold;
             font-size: 20px;
             padding: 6px 12px;
             border-radius: 6px;
-            border: 1px solid #b7eb8f; /* 浅绿边框 */
+            border: 1px solid #b7eb8f;
             box-shadow: 0 2px 5px rgba(0, 100, 0, 0.15);
             margin-bottom: 20px;
             margin-top: 5px;
             letter-spacing: 2px;
-            text-shadow: 0 1px 0 rgba(255,255,255,0.5); /* 增加一点文字立体感 */
+            text-shadow: 0 1px 0 rgba(255,255,255,0.5);
           }
 
           h1 { font-size: 24px; margin-bottom: 10px; color: #1f2937; }
@@ -108,18 +113,22 @@ async function handleRequest(request) {
             btn.innerText = '正在发送通知...';
 
             fetch(window.location.pathname + '?action=notify')
-              .then(res => {
+              .then(async res => {
+                // 如果状态码是 200，说明成功
                 if (res.ok) {
                    alert("✅ 通知已发送，车主会尽快赶来！");
                 } else {
-                   alert("❌ 发送失败，请直接拨打下方电话。");
+                   // 如果失败，读取并显示具体的错误原因
+                   const errorMsg = await res.text();
+                   console.error("API Error:", errorMsg);
+                   alert("❌ 发送失败: " + errorMsg); // 这里会显示具体错误
                 }
               })
-              .catch(() => {
-                alert("❌ 网络错误，请直接拨打电话。");
+              .catch(err => {
+                alert("❌ 网络错误: " + err.message);
               })
               .finally(() => {
-                let countdown = 60;
+                let countdown = 30;
                 const timer = setInterval(() => {
                     btn.innerText = "已发送 (" + countdown + "s)";
                     countdown--;
